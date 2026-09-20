@@ -5,25 +5,41 @@
 #include <string>
 #include <vector>
 
-const std::vector<std::string> flags = {
-    "wscript.exe",
-    ".locked",
-    "certutil.exe",
-    "\\Startup\\"};
-
 int main(int argc, char** argv) {
-    if (argc < 2 || argc > 3 || (argc == 3 && std::string(argv[2]) != "--quiet")) {
+    bool is_quiet = false;
+    std::string log_path;
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--quiet") {
+            if (is_quiet) {
+                std::print(stderr, "использование: nano-edr <журнал.log> [--quiet]\n");
+                return 2;
+            }
+            is_quiet = true;
+        } else if (arg.starts_with('-') || !log_path.empty()) {
+            std::print(stderr, "использование: nano-edr <журнал.log> [--quiet]\n");
+            return 2;
+        } else {
+            log_path = arg;
+        }
+    }
+
+    if (log_path.empty()) {
         std::print(stderr, "использование: nano-edr <журнал.log> [--quiet]\n");
         return 2;
     }
 
-    const bool is_quiet = argc == 3;
-
-    std::ifstream log(argv[1]);
+    std::ifstream log(log_path);
     if (!log) {
-        std::print(stderr, "не удалось открыть журнал: {}\n", argv[1]);
+        std::print(stderr, "не удалось открыть журнал: {}\n", log_path);
         return 2;
     }
+
+    const std::vector<std::string> flags = {
+        "wscript.exe",
+        ".locked",
+        "certutil.exe",
+        "\\Startup\\"};
 
     long long lines = 0;
     long long comments = 0;
