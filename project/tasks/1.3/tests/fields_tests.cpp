@@ -133,6 +133,17 @@ TEST_CASE("сообщение исключения называет поле") {
     }
 }
 
+TEST_CASE("GetRequiredField ищет только среди fields") {
+    // Ищет там же, где FindField: шапка события доступна напрямую, второго пути
+    // к ней нет. Разница между функциями одна — что делать, если поля нет.
+    const Event event = MakeFileWrite();
+
+    CHECK_THROWS_AS(GetRequiredField(event, "ts"), std::invalid_argument);
+    CHECK_THROWS_AS(GetRequiredField(event, "type"), std::invalid_argument);
+    CHECK_THROWS_AS(GetRequiredField(event, "pid"), std::invalid_argument);
+    CHECK(event.ts == "1730000002000");
+}
+
 // ---------------------------------------------------------------------------
 // GetIntField: битое значение — внешние данные, а не ошибка программы
 // ---------------------------------------------------------------------------
@@ -247,6 +258,14 @@ TEST_CASE("NormalizePath раскрывает %TEMP%") {
 
     CHECK(expanded.find("\\appdata\\local\\temp\\") != std::string::npos);
     CHECK(full.find("\\appdata\\local\\temp\\") != std::string::npos);
+}
+
+TEST_CASE("NormalizePath раскрывает только %TEMP% и %TMP%") {
+    // Замена адресная, а не общая: настоящего окружения у журнала нет,
+    // и раскрыватель любых переменных придумал бы путь, которого в нём не было.
+    CHECK(NormalizePath("%TMP%\\A.JS").find("\\appdata\\local\\temp\\") !=
+          std::string::npos);
+    CHECK(NormalizePath("%WINDIR%\\x") == "%windir%\\x");
 }
 
 TEST_CASE("NormalizePath склеивает повторяющиеся разделители") {
