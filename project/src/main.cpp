@@ -1,37 +1,53 @@
+#include <charconv>
 #include <cstdio>
 #include <fstream>
-#include <limits>
 #include <map>
 #include <print>
 #include <string>
 #include <vector>
 
-#include "../kit/include/l1.2/event_list.h"
-#include "../kit/include/l1.2/parse.h"
+#include "event_list.h"
+#include "parse.h"
 
 bool parse_window_size(const std::string* value, std::size_t* result) {
-    if (value->empty()) return false;
+    const char* begin = value->data();
+    const char* end = begin + value->size();
 
-    std::size_t number = 0;
-    for (char cur_char : *value) {
-        if (cur_char < '0' || cur_char > '9') return false;
+    const auto [position, error] =
+        std::from_chars(begin, end, *result);
 
-        const std::size_t digit = static_cast<std::size_t>(cur_char - '0');
-        if (number > (std::numeric_limits<std::size_t>::max() - digit) / 10) return false;
-        number = number * 10 + digit;
-    }
-
-    *result = number;
-    return true;
+    return error == std::errc{} && position == end;
 }
 
 void print_context(const nano_edr::EventList* window) {
-    long long position = -static_cast<long long>(window->size);
-    for (const nano_edr::EventNode* node = window->head; node != nullptr; node = node->next) {
+    const std::size_t context_size = (window->size < 2 ? window->size : 2);
+
+    std::size_t skip = window->size - context_size;
+    const nano_edr::EventNode* node = window->head;
+
+    while (skip > 0) {
+        node = node->next;
+        --skip;
+    }
+
+    long long position = -static_cast<long long>(context_size);
+
+    while (node != nullptr) {
         const nano_edr::Event* event = &node->event;
-        std::print("[CTX] {}: ts={} type={}", position, event->ts, event->type);
-        if (!event->pid.empty()) std::print(" pid={}", event->pid);
+
+        std::print(
+            "[CTX] {}: ts={} type={}",
+            position,
+            event->ts,
+            event->type);
+
+        if (!event->pid.empty()) {
+            std::print(" pid={}", event->pid);
+        }
+
         std::print("\n");
+
+        node = node->next;
         ++position;
     }
 }
@@ -40,7 +56,7 @@ int main(int argc, char** argv) {
     bool is_quiet = false;
     bool has_window_size = false;
     bool invalid_args = false;
-    std::size_t window_size = 2;
+    std::size_t window_size = 64;
     std::string log_path;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -117,18 +133,28 @@ int main(int argc, char** argv) {
         }
 
         nano_edr::Event event;
-        if (!nano_edr::ParseEventLine(&line, &event)) continue;
+        if (!nano_edr::ParseEventLine(&line, &event)) {
+            continue;
+        }
 
         ++events;
         ++events_by_type[event.type];
 
         bool has_detect = false;
+
         for (const std::string& flag : flags) {
             if (line.contains(flag)) {
-                if (!is_quiet && !has_detect) print_context(&window);
                 has_detect = true;
-                std::print("[DETECT] строка {}, признак {}: {}\n", lines, flag, line);
+                std::print(
+                    "[DETECT] строка {}, признак {}: {}\n",
+                    lines,
+                    flag,
+                    line);
             }
+        }
+
+        if (has_detect && !is_quiet) {
+            print_context(&window);
         }
 
         nano_edr::ListPushBack(&window, &event);

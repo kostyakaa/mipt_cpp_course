@@ -1,14 +1,18 @@
-#include "../kit/include/l1.2/event_list.h"
+#include "event_list.h"
 
 void nano_edr::ListPopFront(EventList* list) {
-    if (list->head == nullptr) return;
+    if (list->head == nullptr) {
+        return;
+    }
 
     EventNode* old_head = list->head;
     list->head = list->head->next;
     delete old_head;
     --list->size;
 
-    if (list->head == nullptr) list->tail = nullptr;
+    if (list->head == nullptr) {
+        list->tail = nullptr;
+    }
 }
 
 void nano_edr::ListClear(EventList* list) {
