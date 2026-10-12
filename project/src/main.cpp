@@ -1,14 +1,11 @@
 #include <charconv>
 #include <cstdio>
 #include <exception>
-#include <fstream>
 #include <print>
-#include <stdexcept>
 #include <string>
 
 #include "agent.h"
-#include "os_handle.h"
-#include "parse.h"
+#include "sources.h"
 
 namespace {
 
@@ -60,107 +57,6 @@ bool ParseArguments(int argc, char** argv, Options* options) {
     return !options->source_path.empty();
 }
 
-nano_edr::EventParts ConvertEvent(const os_event& source) {
-    nano_edr::EventParts parts;
-    parts.ts = std::to_string(source.ts);
-    if (source.type != nullptr) {
-        parts.type = source.type;
-    }
-    if (source.pid != 0) {
-        parts.pid = std::to_string(source.pid);
-    }
-    parts.fields.reserve(source.field_count);
-    for (std::size_t index = 0; index < source.field_count; ++index) {
-        const os_kv& field = source.fields[index];
-        parts.fields.push_back(
-            {field.key == nullptr ? "" : field.key,
-             field.value == nullptr ? "" : field.value});
-    }
-    return parts;
-}
-
-struct CallbackContext {
-    nano_edr::Agent* agent = nullptr;
-    std::exception_ptr error;
-};
-
-class FileSource {
- public:
-    explicit FileSource(const std::string& path) : input_(path) {
-        if (!input_) {
-            throw std::runtime_error("не удалось открыть журнал: " + path);
-        }
-    }
-
-    void Run(nano_edr::Agent* agent) {
-        std::string line;
-        while (std::getline(input_, line)) {
-            if (nano_edr::IsBlankOrComment(line)) {
-                continue;
-            }
-
-            nano_edr::EventParts parts;
-            if (!nano_edr::ParseEventParts(line, &parts)) {
-                continue;
-            }
-            try {
-                agent->HandleEvent(nano_edr::Event(parts));
-            } catch (const std::invalid_argument&) {
-                // Битое событие - скип
-            }
-        }
-    }
-
- private:
-    std::ifstream input_;
-};
-
-class OsSource {
- public:
-    explicit OsSource(const std::string& path) : source_(path) {}
-
-    void Run(nano_edr::Agent* agent) {
-        CallbackContext context{agent, nullptr};
-        source_.Subscribe(OnEvent, &context);
-        source_.Start();
-
-        os_status status = OS_TIMEOUT;
-        while ((status = source_.Wait(100)) == OS_TIMEOUT) {
-        }
-        source_.Stop();
-
-        if (context.error != nullptr) {
-            std::rethrow_exception(context.error);
-        }
-        if (status != OS_OK) {
-            throw std::runtime_error(
-                std::string("ошибка источника: ") + os_status_str(status));
-        }
-    }
-
- private:
-    static void OnEvent(const os_event* source, void* raw_context) noexcept {
-        CallbackContext* context = static_cast<CallbackContext*>(raw_context);
-        if (context == nullptr || context->agent == nullptr ||
-            context->error != nullptr) {
-            return;
-        }
-
-        try {
-            if (source == nullptr) {
-                throw std::runtime_error(
-                    "источник передал пустое событие");
-            }
-            context->agent->HandleEvent(
-                nano_edr::Event(ConvertEvent(*source)));
-        } catch (...) {
-            context->error = std::current_exception();
-        }
-    }
-
-    nano_edr::OsHandle source_;
-};
-
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -175,10 +71,10 @@ int main(int argc, char** argv) {
     try {
         nano_edr::Agent agent(options.window_size, options.quiet);
         if (options.file_source) {
-            FileSource source(options.source_path);
+            nano_edr::FileSource source(options.source_path);
             source.Run(&agent);
         } else {
-            OsSource source(options.source_path);
+            nano_edr::OsSource source(options.source_path);
             source.Run(&agent);
         }
         agent.PrintSummary();
