@@ -1,4 +1,4 @@
-#include "sources.h"
+#include "os_source.h"
 
 #include <exception>
 #include <stdexcept>
@@ -6,7 +6,6 @@
 
 #include "agent.h"
 #include "event.h"
-#include "parse.h"
 
 namespace {
 
@@ -37,31 +36,6 @@ struct CallbackContext {
 }  // namespace
 
 namespace nano_edr {
-
-FileSource::FileSource(const std::string& path) : input_(path) {
-    if (!input_) {
-        throw std::runtime_error("не удалось открыть журнал: " + path);
-    }
-}
-
-void FileSource::Run(Agent* agent) {
-    std::string line;
-    while (std::getline(input_, line)) {
-        if (IsBlankOrComment(line)) {
-            continue;
-        }
-
-        EventParts parts;
-        if (!ParseEventParts(line, &parts)) {
-            continue;
-        }
-        try {
-            agent->HandleEvent(Event(parts));
-        } catch (const std::invalid_argument&) {
-            // Битое событие - скип
-        }
-    }
-}
 
 OsSource::OsSource(const std::string& path) : source_(path) {}
 
@@ -97,6 +71,8 @@ void OsSource::Trampoline(const os_event* source,
             throw std::runtime_error("источник передал пустое событие");
         }
         context->agent->HandleEvent(Event(ConvertEvent(*source)));
+    } catch (const std::exception&) {
+        context->agent->HandleBrokenEvent();
     } catch (...) {
         context->error = std::current_exception();
     }
