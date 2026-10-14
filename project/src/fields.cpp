@@ -8,9 +8,9 @@ namespace nano_edr {
 
 namespace {
 
-const std::string temp_path = "\\appdata\\local\\temp";
+const std::string kTempPath = "\\appdata\\local\\temp";
 
-const std::string variables[] = {"%temp%", "%tmp%"};
+const std::string kVariables[] = {"%temp%", "%tmp%"};
 
 char lower_ascii(char character) {
     return static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
@@ -29,8 +29,18 @@ std::string lower_ascii(const std::string& text) {
 }  // namespace
 
 const std::string* FindField(const Event& event, const std::string& key) {
-    // Возвращаем nullptr поскольку отсутствие необязательного поля не является ошибкой
-    for (const Field& field : event.fields) {
+    if (key == "ts") {
+        return &event.raw_ts();
+    }
+    if (key == "type") {
+        return &event.type();
+    }
+    if (key == "pid") {
+        return &event.pid();
+    }
+
+    // Отсутствие необязательного поля - ожидаемый исход, поэтому nullptr.
+    for (const Field& field : event.fields()) {
         if (field.key == key) {
             return &field.value;
         }
@@ -39,7 +49,7 @@ const std::string* FindField(const Event& event, const std::string& key) {
 }
 
 const std::string& GetRequiredField(const Event& event, const std::string& key) {
-    // Выбрасываем исключение поскольку отсутствие обязательного является ошибкой
+    // Отсутствие обязательного поля нарушает контракт формата.
     const std::string* value = FindField(event, key);
 
     if (value == nullptr) {
@@ -50,8 +60,7 @@ const std::string& GetRequiredField(const Event& event, const std::string& key) 
 }
 
 bool GetIntField(const Event& event, const std::string& key, uint64_t* out) {
-    // Ошибок не выбрасываем, поле key не обязательно должно существовать
-    // Ошибка парсинга данных тоже ожидаемая ошибка, не требует выброса исключений
+    // Отсутствующее или битое число - ожидаемая ошибка внешних данных.
     const std::string* field = FindField(event, key);
 
     if (field == nullptr) {
@@ -74,7 +83,7 @@ bool GetIntField(const Event& event, const std::string& key, uint64_t* out) {
 }
 
 uint64_t GetIntField(const Event& event, const std::string& key, uint64_t fallback) {
-    // Ошибок не выбрасываем, поле key не обязательно должно существовать
+    // Подстановка покрывает и отсутствующее, и неразбираемое значение.
     uint64_t value = 0;
 
     if (!GetIntField(event, key, &value)) {
@@ -85,15 +94,15 @@ uint64_t GetIntField(const Event& event, const std::string& key, uint64_t fallba
 }
 
 bool IsProcessStart(const Event& event) {
-    return event.type == "process_start";
+    return event.type() == "process_start";
 }
 
 bool IsFileWrite(const Event& event) {
-    return event.type == "file_write";
+    return event.type() == "file_write";
 }
 
 bool IsNetConnect(const Event& event) {
-    return event.type == "net_connect";
+    return event.type() == "net_connect";
 }
 
 bool PathEndsWith(const Event& event, const std::string& suffix) {
@@ -129,12 +138,12 @@ std::string NormalizePath(const std::string& path) {
     // просто приводит его в нормализованный вид
     std::string expanded = lower_ascii(path);
 
-    for (const std::string& variable : variables) {
+    for (const std::string& variable : kVariables) {
         std::size_t position = 0;
 
         while ((position = expanded.find(variable, position)) != std::string::npos) {
-            expanded.replace(position, variable.size(), temp_path);
-            position += temp_path.size();
+            expanded.replace(position, variable.size(), kTempPath);
+            position += kTempPath.size();
         }
     }
 

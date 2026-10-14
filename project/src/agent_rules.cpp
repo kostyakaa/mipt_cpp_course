@@ -17,11 +17,11 @@ bool ImageIs(const Event& event, const std::string& filename) {
 }
 
 const std::string* DestinationPath(const Event& event) {
-    if (event.type == "file_create" || event.type == "file_write") {
+    if (event.type() == "file_create" || event.type() == "file_write") {
         return FindField(event, "path");
     }
 
-    if (event.type == "file_move") {
+    if (event.type() == "file_move") {
         return FindField(event, "to");
     }
 
