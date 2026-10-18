@@ -2,128 +2,108 @@
 
 namespace {
 
-bool is_space(char character) {
+bool IsSpace(char character) {
     return character == ' ' || character == '\t';
 }
 
-void skip_spaces(const std::string* line, std::size_t* pos) {
-    while (*pos < line->size() && is_space((*line)[*pos])) {
-        ++(*pos);
+void SkipSpaces(const std::string& line, std::size_t* position) {
+    while (*position < line.size() && IsSpace(line[*position])) {
+        ++(*position);
     }
 }
 
-bool parse_key(const std::string* line, std::size_t* pos, std::string* key) {
-    while (*pos < line->size()) {
-        char cur_char = (*line)[*pos];
-        if (cur_char == '=') {
-            break;
-        }
-        if (is_space(cur_char) || cur_char == '"') {
+bool ParseKey(const std::string& line, std::size_t* position,
+              std::string* key) {
+    while (*position < line.size() && line[*position] != '=') {
+        const char character = line[*position];
+        if (IsSpace(character) || character == '"') {
             return false;
         }
-
-        *key += cur_char;
-        ++(*pos);
+        *key += character;
+        ++(*position);
     }
-
-    return !key->empty() && *pos < line->size() && (*line)[*pos] == '=';
+    return !key->empty() && *position < line.size();
 }
 
-bool parse_value(const std::string* line, std::size_t* pos, std::string* value) {
-    if (*pos == line->size()) {
+bool ParseValue(const std::string& line, std::size_t* position,
+                std::string* value) {
+    if (*position == line.size()) {
         return true;
     }
 
-    if ((*line)[*pos] == '"') {
-        ++(*pos);
-        while (*pos < line->size() && (*line)[*pos] != '"') {
-            *value += (*line)[*pos];
-            ++(*pos);
+    if (line[*position] == '"') {
+        ++(*position);
+        while (*position < line.size() && line[*position] != '"') {
+            *value += line[*position];
+            ++(*position);
         }
-
-        if (*pos == line->size()) {
+        if (*position == line.size()) {
             return false;
         }
-        ++(*pos);
-        if (*pos < line->size() && !is_space((*line)[*pos])) {
-            return false;
-        }
-        return true;
+        ++(*position);
+        return *position == line.size() || IsSpace(line[*position]);
     }
 
-    while (*pos < line->size() && !is_space((*line)[*pos])) {
-        *value += (*line)[*pos];
-        ++(*pos);
+    while (*position < line.size() && !IsSpace(line[*position])) {
+        *value += line[*position];
+        ++(*position);
     }
     return true;
 }
 
 }  // namespace
 
-bool nano_edr::ParseEventLine(const std::string* line, Event* out) {
-    if (IsBlankOrComment(line)) {
+namespace nano_edr {
+
+bool ParseEventParts(const std::string& line, EventParts* out) {
+    if (out == nullptr || IsBlankOrComment(line)) {
         return false;
     }
 
-    std::size_t pos = 0;
+    EventParts parsed;
     bool has_ts = false;
     bool has_type = false;
     bool has_pid = false;
+    std::size_t position = 0;
 
-    while (pos < line->size()) {
-        skip_spaces(line, &pos);
-        if (pos == line->size()) {
+    while (position < line.size()) {
+        SkipSpaces(line, &position);
+        if (position == line.size()) {
             break;
         }
 
         std::string key;
         std::string value;
-
-        if (!parse_key(line, &pos, &key)) {
+        if (!ParseKey(line, &position, &key)) {
             return false;
         }
-
-        ++pos;
-        if (!parse_value(line, &pos, &value)) {
+        ++position;
+        if (!ParseValue(line, &position, &value)) {
             return false;
         }
 
         if (key == "ts" && !has_ts) {
-            if (value.empty()) {
-                return false;
-            }
-            out->ts = value;
+            parsed.ts = value;
             has_ts = true;
         } else if (key == "type" && !has_type) {
-            if (value.empty()) {
-                return false;
-            }
-            out->type = value;
+            parsed.type = value;
             has_type = true;
         } else if (key == "pid" && !has_pid) {
-            out->pid = value;
+            parsed.pid = value;
             has_pid = true;
         } else {
-            out->fields.push_back({key, value});
+            parsed.fields.push_back({key, value});
         }
     }
 
-    return has_ts && has_type;
+    *out = parsed;
+    return true;
 }
 
-bool nano_edr::IsBlankOrComment(const std::string* line) {
+bool IsBlankOrComment(const std::string& line) {
     std::size_t first = 0;
-    while (first < line->size() && is_space(line->operator[](first))) {
-        ++first;
-    }
-    if (first == line->size()) {
-        return true;
-    }
-    if (line->operator[](first) == '#') {
-        return true;
-    }
-    if (line->operator[](first) == ';') {
-        return true;
-    }
-    return false;
+    SkipSpaces(line, &first);
+    return first == line.size() || line[first] == '#' || line[first] == ';';
 }
+
+}  // namespace nano_edr
