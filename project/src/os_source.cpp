@@ -1,6 +1,5 @@
 #include "os_source.h"
 
-#include <exception>
 #include <stdexcept>
 #include <string>
 
@@ -30,7 +29,6 @@ nano_edr::EventParts ConvertEvent(const os_event& source) {
 
 struct CallbackContext {
     nano_edr::Agent* agent = nullptr;
-    std::exception_ptr error;
 };
 
 }  // namespace
@@ -40,18 +38,14 @@ namespace nano_edr {
 OsSource::OsSource(const std::string& path) : source_(path) {}
 
 void OsSource::Run(Agent* agent) {
-    CallbackContext context{agent, nullptr};
+    CallbackContext context{agent};
     source_.Subscribe(Trampoline, &context);
     source_.Start();
 
     os_status status = OS_TIMEOUT;
     while ((status = source_.Wait(100)) == OS_TIMEOUT) {
     }
-    source_.Stop();
 
-    if (context.error != nullptr) {
-        std::rethrow_exception(context.error);
-    }
     if (status != OS_OK) {
         throw std::runtime_error(
             std::string("ошибка источника: ") + os_status_str(status));
@@ -61,8 +55,7 @@ void OsSource::Run(Agent* agent) {
 void OsSource::Trampoline(const os_event* source,
                           void* raw_context) noexcept {
     CallbackContext* context = static_cast<CallbackContext*>(raw_context);
-    if (context == nullptr || context->agent == nullptr ||
-        context->error != nullptr) {
+    if (context == nullptr || context->agent == nullptr) {
         return;
     }
 
@@ -71,10 +64,8 @@ void OsSource::Trampoline(const os_event* source,
             throw std::runtime_error("источник передал пустое событие");
         }
         context->agent->HandleEvent(Event(ConvertEvent(*source)));
-    } catch (const std::exception&) {
-        context->agent->HandleBrokenEvent();
     } catch (...) {
-        context->error = std::current_exception();
+        context->agent->HandleBrokenEvent();
     }
 }
 
