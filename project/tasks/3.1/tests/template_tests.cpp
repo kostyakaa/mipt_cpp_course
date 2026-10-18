@@ -155,6 +155,29 @@ TEST_CASE("очистка возвращает буфер в исходное с
 // «Не аллоцирует вообще» — проверяемое утверждение
 // ---------------------------------------------------------------------------
 
+// Подмена глобального operator new. Грубо, но иначе утверждение
+// «не аллоцирует» остаётся словами.
+//
+// Под ASan на Windows подменять нельзя: среда ASan там компонуется
+// статически и определяет operator new сама, и линкер видит два
+// определения (duplicate symbol). Тогда подмены нет, а случай ниже
+// помечен пропущенным. На Linux ASan перехватывает слабыми символами,
+// и подмена работает и под ним.
+#if defined(_WIN32) && defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define NANO_EDR_ASAN_OWNS_NEW 1
+#endif
+#endif
+
+#ifdef NANO_EDR_ASAN_OWNS_NEW
+
+TEST_CASE("кольцевой буфер не аллоцирует вообще" * doctest::skip()) {
+    // Считать нечем: operator new принадлежит ASan. Проверяется
+    // в сборке без санитайзера.
+}
+
+#else
+
 namespace {
 
 std::size_t allocation_count = 0;
@@ -162,8 +185,6 @@ bool counting_allocations = false;
 
 }  // namespace
 
-// Подмена глобального operator new. Грубо, но иначе утверждение
-// «не аллоцирует» остаётся словами.
 void* operator new(std::size_t size) {
     if (counting_allocations) {
         ++allocation_count;
@@ -207,6 +228,8 @@ TEST_CASE("кольцевой буфер не аллоцирует вообще"
     CHECK(allocation_count == 0);
     CHECK(sum > 0);  // чтобы цикл не выбросили
 }
+
+#endif  // NANO_EDR_ASAN_OWNS_NEW
 
 // ---------------------------------------------------------------------------
 // ThresholdRule: границы

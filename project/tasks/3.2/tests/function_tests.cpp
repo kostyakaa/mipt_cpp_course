@@ -62,10 +62,10 @@ Detection MakeDetection(const std::string& rule, const std::string& pid,
     return detection;
 }
 
-// Свободная функция — тоже вызываемый объект, и Function обязан её принять.
+// Свободная функция — тоже callable, и Function обязан её принять.
 int Doubled(int x) { return x * 2; }
 
-// Объект с operator() — третий вид вызываемого.
+// Объект с operator() — третий вид callable.
 struct AddN {
     int n;
     int operator()(int x) const { return x + n; }
@@ -73,7 +73,7 @@ struct AddN {
 
 // Получатель с состоянием: operator() НЕконстантный, состояние снаружи.
 // Именно такой и есть DedupSink, и именно на нём проверяется, что
-// константный Function умеет звать неконстантный вызываемый.
+// константный Function умеет звать неконстантный callable.
 struct Ticker {
     std::size_t* calls;
     void operator()() { ++*calls; }
@@ -136,7 +136,7 @@ TEST_CASE("размер не зависит от того, что внутри")
     CHECK(sizeof(fn) == small);
 }
 
-TEST_CASE("разные вызываемые ложатся в один вектор") {
+TEST_CASE("разные callable ложатся в один вектор") {
     // Ровно то, чего не умел AllOfStatic с занятия 3.1: там каждый набор
     // давал свой тип, и в один вектор их было не сложить.
     std::vector<Function<int(int)>> all;
@@ -157,7 +157,7 @@ TEST_CASE("Function не копируется") {
     CHECK(std::is_move_constructible_v<Function<int(int)>>);
 }
 
-TEST_CASE("константный Function зовёт неконстантный вызываемый") {
+TEST_CASE("константный Function зовёт неконстантный callable") {
     // Так же устроен std::function, и по той же причине: const у Function
     // говорит «я не меняю сам Function», а не «я не меняю то, что внутри».
     // Получателю с состоянием — тому, что подавляет дубликаты, — это и нужно.

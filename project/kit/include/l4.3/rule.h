@@ -116,7 +116,7 @@ class MatchRule : public RuleBase {
  public:
     MatchRule(const std::string& id, Severity severity);
 
-    // Владение условием переходит правилу. Отсюда unique_ptr в подписи:
+    // Владение условием переходит правилу. Отсюда unique_ptr в сигнатуре:
     // он говорит об этом сам, и забыть освободить условие нечем.
     void AddCondition(std::unique_ptr<ICondition> condition);
 
@@ -177,8 +177,8 @@ class SequenceRule : public RuleBase {
     // конца прогона.
     void OnTick(Timestamp now) override;
 
-    // Сколько незавершённых совпадений держится сейчас. Нужно тестам
-    // и полезно на паре: у правила с состоянием память растёт, и увидеть,
+    // Сколько незавершённых совпадений держится сейчас. Нужно тестам,
+    // и не только им: у правила с состоянием память растёт, и увидеть,
     // что она не растёт бесконечно, стоит своими глазами.
     std::size_t pending() const { return pending_.size(); }
 
