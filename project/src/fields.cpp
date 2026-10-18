@@ -1,8 +1,9 @@
 #include "fields.h"
 
-#include <cctype>
 #include <charconv>
 #include <stdexcept>
+
+#include "text.h"
 
 namespace nano_edr {
 
@@ -11,20 +12,6 @@ namespace {
 const std::string kTempPath = "\\appdata\\local\\temp";
 
 const std::string kVariables[] = {"%temp%", "%tmp%"};
-
-char lower_ascii(char character) {
-    return static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
-}
-
-std::string lower_ascii(const std::string& text) {
-    std::string result = text;
-
-    for (char& character : result) {
-        character = lower_ascii(character);
-    }
-
-    return result;
-}
 
 }  // namespace
 
@@ -113,10 +100,7 @@ bool PathEndsWith(const Event& event, const std::string& suffix) {
         return false;
     }
 
-    const std::string lower_path = lower_ascii(*path);
-    const std::string lower_suffix = lower_ascii(suffix);
-
-    return lower_path.ends_with(lower_suffix);
+    return TextEndsWith(*path, suffix);
 }
 
 bool CommandLineContains(const Event& event, const std::string& needle) {
@@ -127,16 +111,13 @@ bool CommandLineContains(const Event& event, const std::string& needle) {
         return false;
     }
 
-    const std::string lower_command_line = lower_ascii(*command_line);
-    const std::string lower_needle = lower_ascii(needle);
-
-    return lower_command_line.find(lower_needle) != std::string::npos;
+    return TextContains(*command_line, needle);
 }
 
 std::string NormalizePath(const std::string& path) {
     // Ошибок не выбрасываем поскольку функция никак не проверяет путь на корректность
     // просто приводит его в нормализованный вид
-    std::string expanded = lower_ascii(path);
+    std::string expanded = LowerAscii(path);
 
     for (const std::string& variable : kVariables) {
         std::size_t position = 0;

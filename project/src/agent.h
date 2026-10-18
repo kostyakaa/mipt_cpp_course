@@ -4,8 +4,10 @@
 #include <cstddef>
 #include <map>
 #include <string>
+#include <vector>
 
 #include "event_list.h"
+#include "rule.h"
 
 namespace nano_edr {
 
@@ -24,6 +26,7 @@ class Agent {
     std::size_t event_count_ = 0;
     std::size_t broken_event_count_ = 0;
     std::map<std::string, std::size_t> events_by_type_;
+    std::vector<MatchRule> rules_;
 };
 
 }  // namespace nano_edr
