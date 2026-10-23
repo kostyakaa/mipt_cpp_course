@@ -4,7 +4,6 @@
 #include <stdexcept>
 #include <string>
 
-#include "agent.h"
 #include "event.h"
 #include "parse.h"
 
@@ -16,22 +15,23 @@ FileSource::FileSource(const std::string& path) : input_(path) {
     }
 }
 
-void FileSource::Run(Agent* agent) {
+void FileSource::Run(IEventHandler* handler) {
     std::string line;
     while (std::getline(input_, line)) {
         if (IsBlankOrComment(line)) {
+            handler->OnSkipped();
             continue;
         }
 
         EventParts parts;
         if (!ParseEventParts(line, &parts)) {
-            agent->HandleBrokenEvent();
+            handler->OnBroken();
             continue;
         }
         try {
-            agent->HandleEvent(Event(parts));
+            handler->HandleEvent(Event(parts));
         } catch (const std::exception&) {
-            agent->HandleBrokenEvent();
+            handler->OnBroken();
         }
     }
 }
