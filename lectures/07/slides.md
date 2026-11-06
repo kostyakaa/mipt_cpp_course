@@ -406,6 +406,25 @@ void describe(const Animal& a) {
 
 ---
 
+## Виртуальный вызов в конструкторе
+
+```cpp
+struct Base {
+    Base() { hello(); }
+    virtual ~Base() { hello(); }
+    virtual void hello() const { std::print("Base\n"); }
+};
+struct Derived : Base {
+    void hello() const override { std::print("Derived: {}\n", name_); }
+    std::string name_{"ready"};
+};
+Derived d;   // Base при создании, Base при уничтожении
+```
+
+![width:820px](img/ctor-dtor-vptr.svg)
+
+---
+
 ## `sizeof`: что добавляет `virtual`
 
 ```cpp
