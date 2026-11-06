@@ -1,118 +1,73 @@
 #include "agent_rules.h"
 
-#include "fields.h"
-
 namespace nano_edr {
-namespace {
 
-bool ImageIs(const Event& event, const std::string& filename) {
-    if (!IsProcessStart(event)) {
-        return false;
-    }
+std::vector<MatchRule> BuildAgentRules() {
+    std::vector<MatchRule> rules;
 
-    const std::string image = NormalizePath(GetRequiredField(event, "image"));
-    const std::string normalized_filename = NormalizePath(filename);
+    MatchRule script_host("script_host_from_temp", Severity::kHigh);
+    script_host.AddCondition(
+        Condition::Equals("type", {"process_start"}));
+    script_host.AddCondition(
+        Condition::EndsWith("image", {"wscript.exe", "cscript.exe"}));
+    script_host.AddCondition(Condition::Contains(
+        "cmdline", {"\\appdata\\local\\temp\\", "/appdata/local/temp/",
+                    "\\windows\\temp\\", "/windows/temp/", "%temp%",
+                    "%tmp%"}));
+    script_host.AddAction("kill_process");
+    rules.push_back(script_host);
 
-    return image == normalized_filename || image.ends_with("\\" + normalized_filename);
-}
+    MatchRule lolbin("lolbin_download", Severity::kHigh);
+    lolbin.AddCondition(Condition::Equals("type", {"process_start"}));
+    lolbin.AddCondition(
+        Condition::EndsWith("image", {"certutil.exe", "bitsadmin.exe"}));
+    lolbin.AddCondition(Condition::Contains(
+        "cmdline", {"urlcache", "transfer", "http:", "https:"}));
+    lolbin.AddAction("kill_process");
+    rules.push_back(lolbin);
 
-const std::string* DestinationPath(const Event& event) {
-    if (event.type() == "file_create" || event.type() == "file_write") {
-        return FindField(event, "path");
-    }
+    MatchRule hidden_powershell("hidden_powershell", Severity::kMedium);
+    hidden_powershell.AddCondition(
+        Condition::Equals("type", {"process_start"}));
+    hidden_powershell.AddCondition(
+        Condition::EndsWith("image", {"powershell.exe", "pwsh.exe"}));
+    hidden_powershell.AddCondition(Condition::Contains(
+        "cmdline", {"-w hidden", "-windowstyle hidden", "-enc",
+                    "-encodedcommand"}));
+    hidden_powershell.AddAction("kill_process");
+    rules.push_back(hidden_powershell);
 
-    if (event.type() == "file_move") {
-        return FindField(event, "to");
-    }
+    MatchRule autostart_path("autostart_write", Severity::kHigh);
+    autostart_path.AddCondition(
+        Condition::Equals("type", {"file_create", "file_write"}));
+    autostart_path.AddCondition(Condition::Contains(
+        "path", {"\\start menu\\programs\\startup\\",
+                 "/start menu/programs/startup/"}));
+    autostart_path.AddAction("quarantine_file");
+    rules.push_back(autostart_path);
 
-    return nullptr;
-}
+    MatchRule autostart_to("autostart_write", Severity::kHigh);
+    autostart_to.AddCondition(Condition::Equals("type", {"file_move"}));
+    autostart_to.AddCondition(Condition::Contains(
+        "to", {"\\start menu\\programs\\startup\\",
+               "/start menu/programs/startup/"}));
+    autostart_to.AddAction("quarantine_file");
+    rules.push_back(autostart_to);
 
-bool ScriptHostFromTemp(const Event& event) {
-    if (!ImageIs(event, "wscript.exe") && !ImageIs(event, "cscript.exe")) {
-        return false;
-    }
+    MatchRule ransom_path("ransom_extension", Severity::kCritical);
+    ransom_path.AddCondition(
+        Condition::Equals("type", {"file_create", "file_write"}));
+    ransom_path.AddCondition(Condition::EndsWith("path", {".locked"}));
+    ransom_path.AddAction("quarantine_file");
+    rules.push_back(ransom_path);
 
-    const std::string* command_line = FindField(event, "cmdline");
-    if (command_line == nullptr) {
-        return false;
-    }
+    MatchRule ransom_to("ransom_extension", Severity::kCritical);
+    ransom_to.AddCondition(Condition::Equals("type", {"file_move"}));
+    ransom_to.AddCondition(Condition::EndsWith("to", {".locked"}));
+    ransom_to.AddAction("quarantine_file");
+    rules.push_back(ransom_to);
 
-    const std::string normalized = NormalizePath(*command_line);
-
-    return normalized.contains("\\appdata\\local\\temp\\") || normalized.contains("\\windows\\temp\\");
-}
-
-bool LolbinDownload(const Event& event) {
-    if (!ImageIs(event, "certutil.exe") && !ImageIs(event, "bitsadmin.exe")) {
-        return false;
-    }
-
-    return CommandLineContains(event, "urlcache") || CommandLineContains(event, "transfer") || CommandLineContains(event, "http:") || CommandLineContains(event, "https:");
-}
-
-bool HiddenPowershell(const Event& event) {
-    if (!ImageIs(event, "powershell.exe") && !ImageIs(event, "pwsh.exe")) {
-        return false;
-    }
-
-    return CommandLineContains(event, "-w hidden") || CommandLineContains(event, "-windowstyle hidden") || CommandLineContains(event, "-enc") || CommandLineContains(event, "-encodedcommand");
-}
-
-bool AutostartWrite(const Event& event) {
-    const std::string* path = DestinationPath(event);
-    if (path == nullptr) {
-        return false;
-    }
-
-    return NormalizePath(*path).contains("\\start menu\\programs\\startup\\");
-}
-
-bool RansomExtension(const Event& event) {
-    const std::string* path = DestinationPath(event);
-    if (path == nullptr) {
-        return false;
-    }
-
-    return NormalizePath(*path).ends_with(".locked");
-}
-
-constexpr Rule kRules[] = {
-    {
-        "script_host_from_temp",
-        ScriptHostFromTemp,
-        Severity::kHigh,
-    },
-    {
-        "lolbin_download",
-        LolbinDownload,
-        Severity::kHigh,
-    },
-    {
-        "hidden_powershell",
-        HiddenPowershell,
-        Severity::kMedium,
-    },
-    {
-        "autostart_write",
-        AutostartWrite,
-        Severity::kHigh,
-    },
-    {
-        "ransom_extension",
-        RansomExtension,
-        Severity::kCritical,
-    },
-};
-
-}  // namespace
-
-const Rule* AgentRules() {
-    return kRules;
-}
-
-size_t AgentRuleCount() {
-    return sizeof(kRules) / sizeof(kRules[0]);
+    return rules;
 }
 
 }  // namespace nano_edr
