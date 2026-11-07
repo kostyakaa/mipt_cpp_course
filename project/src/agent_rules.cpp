@@ -4,8 +4,10 @@
 #include <utility>
 #include <vector>
 
+#include "combinators.h"
 #include "conditions.h"
 #include "event.h"
+#include "make_rule.h"
 #include "rule.h"
 #include "rules.h"
 
@@ -142,6 +144,19 @@ RuleEngine BuildAgentRules() {
         std::vector<EventType>{EventType::kNetConnect}));
     beacon->AddAction("kill_process");
     engine.AddRule(std::move(beacon));
+
+    auto mass_write = MakeRule<ThresholdRule<128>>(
+        "ransomware_mass_write", Severity::kCritical, 20, 10000, "pid");
+    mass_write->SetCondition(MakeCondition(AllOfStatic(
+        EventTypeIs({EventType::kFileCreate, EventType::kFileWrite,
+                     EventType::kFileMove}),
+        AnyOfStatic(FieldContains("path", "\\Documents\\"),
+                    FieldContains("path", "\\Desktop\\"),
+                    FieldContains("to", "\\Documents\\"),
+                    FieldContains("to", "\\Desktop\\")))));
+    mass_write->AddAction("kill_process");
+    mass_write->AddAction("quarantine_file");
+    engine.AddRule(std::move(mass_write));
 
     return engine;
 }
