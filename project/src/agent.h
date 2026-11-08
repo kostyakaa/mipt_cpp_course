@@ -30,6 +30,8 @@ class Agent : public IEventHandler {
     void PrintSummary() const;
 
  private:
+    void PrintContext() const;
+
     RingBuffer<WindowEntry, kWindowCapacity> window_;
     RuleEngine engine_;
     bool quiet_ = false;

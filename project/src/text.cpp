@@ -22,7 +22,15 @@ std::string LowerAscii(const std::string& text) {
 }
 
 bool TextEquals(const std::string& text, const std::string& expected) {
-    return LowerAscii(text) == LowerAscii(expected);
+    if (text.size() != expected.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < text.size(); ++index) {
+        if (LowerAscii(text[index]) != LowerAscii(expected[index])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool TextContains(const std::string& text, const std::string& needle) {

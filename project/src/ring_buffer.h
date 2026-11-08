@@ -31,16 +31,16 @@ class RingBuffer {
     };
 
     void PushBack(const T& value) {
-        data_[(begin_ + size_) % N] = value;
+        data_[(oldest_ + size_) % N] = value;
         if (full()) {
-            begin_ = (begin_ + 1) % N;
+            oldest_ = (oldest_ + 1) % N;
         } else {
             ++size_;
         }
     }
 
     void Clear() {
-        begin_ = 0;
+        oldest_ = 0;
         size_ = 0;
     }
 
@@ -49,7 +49,7 @@ class RingBuffer {
     bool empty() const { return size_ == 0; }
     bool full() const { return size_ == N; }
     const T& operator[](std::size_t index) const {
-        return data_[(begin_ + index) % N];
+        return data_[(oldest_ + index) % N];
     }
     const T& back() const { return (*this)[size_ - 1]; }
     Iterator begin() const { return Iterator(this, 0); }
@@ -57,7 +57,7 @@ class RingBuffer {
 
  private:
     std::array<T, N> data_{};
-    std::size_t begin_ = 0;
+    std::size_t oldest_ = 0;
     std::size_t size_ = 0;
 };
 

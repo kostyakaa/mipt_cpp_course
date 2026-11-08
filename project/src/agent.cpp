@@ -6,26 +6,26 @@
 #include "agent_rules.h"
 #include "rules.h"
 
-namespace {
+namespace nano_edr {
 
-void PrintContext(const nano_edr::RingBuffer<nano_edr::WindowEntry,
-                                             nano_edr::Agent::kWindowCapacity>& window) {
-    const std::size_t count = window.size() < 2 ? window.size() : 2;
-    for (std::size_t index = window.size() - count; index < window.size(); ++index) {
-        const nano_edr::WindowEntry& entry = window[index];
-        const long long position = static_cast<long long>(index) -
-                                   static_cast<long long>(window.size());
-        std::print("[CTX] {}: {} {}", position, entry.ts.ms, entry.type);
+void Agent::PrintContext() const {
+    if (window_.size() >= 2) {
+        const WindowEntry& entry = window_[window_.size() - 2];
+        std::print("[CTX] -2: {} {}", entry.ts.ms, entry.type);
+        if (!entry.pid.empty()) {
+            std::print(" pid={}", entry.pid);
+        }
+        std::print("\n");
+    }
+    if (window_.size() >= 1) {
+        const WindowEntry& entry = window_.back();
+        std::print("[CTX] -1: {} {}", entry.ts.ms, entry.type);
         if (!entry.pid.empty()) {
             std::print(" pid={}", entry.pid);
         }
         std::print("\n");
     }
 }
-
-}  // namespace
-
-namespace nano_edr {
 
 Agent::Agent(bool quiet)
     : engine_(BuildAgentRules()),
@@ -35,7 +35,7 @@ void Agent::HandleEvent(const Event& event) {
     std::vector<const IRule*> fired;
     const std::size_t detections = engine_.ProcessEvent(event, &fired);
     if (detections != 0 && !quiet_) {
-        PrintContext(window_);
+        PrintContext();
     }
     for (const IRule* rule : fired) {
         std::print("[DETECT] {}  {}  ts={} pid={}\n",
