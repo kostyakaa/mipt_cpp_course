@@ -34,11 +34,33 @@ bool TextEquals(const std::string& text, const std::string& expected) {
 }
 
 bool TextContains(const std::string& text, const std::string& needle) {
-    return LowerAscii(text).contains(LowerAscii(needle));
+    if (needle.size() > text.size()) {
+        return false;
+    }
+    for (std::size_t start = 0; start <= text.size() - needle.size(); ++start) {
+        std::size_t index = 0;
+        while (index < needle.size() &&
+               LowerAscii(text[start + index]) == LowerAscii(needle[index])) {
+            ++index;
+        }
+        if (index == needle.size()) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool TextEndsWith(const std::string& text, const std::string& suffix) {
-    return LowerAscii(text).ends_with(LowerAscii(suffix));
+    if (suffix.size() > text.size()) {
+        return false;
+    }
+    const std::size_t start = text.size() - suffix.size();
+    for (std::size_t index = 0; index < suffix.size(); ++index) {
+        if (LowerAscii(text[start + index]) != LowerAscii(suffix[index])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 }  // namespace nano_edr

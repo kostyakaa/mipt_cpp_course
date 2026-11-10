@@ -128,21 +128,21 @@ std::string NormalizePath(const std::string& path) {
         }
     }
 
-    std::string normalized;
-    normalized.reserve(expanded.size());
-
+    std::size_t written = 0;
     for (char character : expanded) {
         if (character == '/') {
             character = '\\';
         }
 
-        if (character == '\\' && !normalized.empty() && normalized.back() == '\\') {
+        if (character == '\\' && written != 0 && expanded[written - 1] == '\\') {
             continue;
         }
 
-        normalized += character;
+        expanded[written] = character;
+        ++written;
     }
 
-    return normalized;
+    expanded.resize(written);
+    return expanded;
 }
 }  // namespace nano_edr
