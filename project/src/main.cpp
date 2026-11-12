@@ -1,4 +1,3 @@
-#include <charconv>
 #include <cstdio>
 #include <exception>
 #include <memory>
@@ -15,20 +14,10 @@ namespace {
 struct Options {
     bool quiet = false;
     bool file_source = false;
-    std::size_t window_size = 64;
     std::string source_path;
 };
 
-bool ParseSize(const std::string& value, std::size_t* result) {
-    const char* begin = value.data();
-    const char* end = begin + value.size();
-    const auto [position, error] = std::from_chars(begin, end, *result);
-    return error == std::errc{} && position == end;
-}
-
 bool ParseArguments(int argc, char** argv, Options* options) {
-    bool has_window_size = false;
-
     for (int index = 1; index < argc; ++index) {
         const std::string argument = argv[index];
         if (argument == "--quiet") {
@@ -36,14 +25,6 @@ bool ParseArguments(int argc, char** argv, Options* options) {
                 return false;
             }
             options->quiet = true;
-        } else if (argument == "--window-size") {
-            if (has_window_size || index + 1 == argc) {
-                return false;
-            }
-            has_window_size = true;
-            if (!ParseSize(argv[++index], &options->window_size)) {
-                return false;
-            }
         } else if (argument == "--file") {
             if (options->file_source || !options->source_path.empty() || index + 1 == argc) {
                 return false;
@@ -67,12 +48,12 @@ int main(int argc, char** argv) {
     if (!ParseArguments(argc, argv, &options)) {
         std::print(stderr,
                    "использование: nano-edr [--file] <журнал.log> "
-                   "[--window-size N] [--quiet]\n");
+                   "[--quiet]\n");
         return 2;
     }
 
     try {
-        nano_edr::Agent agent(options.window_size, options.quiet);
+        nano_edr::Agent agent(options.quiet);
         std::unique_ptr<nano_edr::IEventSource> source;
         if (options.file_source) {
             source =
