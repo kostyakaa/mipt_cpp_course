@@ -225,6 +225,47 @@ int (*fp2)(int) = capturing;   // CE: нельзя
 Это полезно для работы с C-API, которые ожидают указатель на функцию. Что делать, если захваты всё-таки нужны — раздел 8.
 
 ---
+
+## Откуда берётся преобразование
+
+Компилятор дописывает в тип замыкания **оператор преобразования** (conversion operator) — метод `operator T()`:
+
+```cpp
+class __Lambda_43 {
+public:
+    using Fn = int (*)(int);
+
+    int operator()(int x) const { return invoke(x); }
+    operator Fn() const { return &invoke; }   // замыкание → указатель
+private:
+    static int invoke(int x) { return x * 2; }   // тело лямбды
+};
+```
+
+`invoke` статическая: у неё нет `this`, и полей она не видит. Поэтому с захватами такой функции не построить.
+
+---
+
+## Оператор преобразования в своём классе
+
+```cpp
+class Handle {                       // explicit Handle(int fd)
+public:
+    explicit operator bool() const { return fd_ >= 0; }
+private:
+    int fd_{-1};
+};
+
+if (log) { /* ... */ }               // ok
+if (!log || !sock) return;           // ok
+bool ok = log;                       // CE: нужен static_cast
+int n = log + sock;                  // CE, а без explicit — 2
+```
+
+- `explicit` — по той же причине, что у конструктора (лекция 4): без него `Handle` молча превращается в число
+- В `if`, `while`, `!`, `&&`, `||` и `?:` он вызывается сам — **контекстное преобразование** (contextual conversion). Так проверяют `std::function`, `unique_ptr`, `optional`
+
+---
 <!-- header: 4. Захват полей -->
 
 # 4. Захват полей класса и `this`
@@ -369,16 +410,16 @@ std::cout << op(4, 6) << '\n';             // 24
 **Type erasure** собирается из виртуальной функции (virtual function; лекция 7) и шаблона (лекция 8). Для сигнатуры (signature) `int(int, int)`:
 
 ```cpp
-class CallableBase {                     // шаг 1: «вызови меня»
+class ICallable {                        // шаг 1: «вызови меня»
 public:
-    virtual ~CallableBase() = default;
+    virtual ~ICallable() = default;
     virtual int call(int a, int b) = 0;
 };
 
 template <typename F>                    // шаг 2: наследник под тип цели
-class CallableModel : public CallableBase {
+class CallableHolder : public ICallable {
 public:
-    explicit CallableModel(F f) : f_(f) {}
+    explicit CallableHolder(F f) : f_(f) {}
     int call(int a, int b) override { return f_(a, b); }
 private:
     F f_{};
@@ -395,11 +436,11 @@ private:
 class BinaryOp {                         // шаг 3: снаружи один тип
 public:
     template <typename F>
-    BinaryOp(F f) : impl_(std::make_unique<CallableModel<F>>(f)) {}
+    BinaryOp(F f) : impl_(std::make_unique<CallableHolder<F>>(f)) {}
 
     int operator()(int a, int b) const { return impl_->call(a, b); }
 private:
-    std::unique_ptr<CallableBase> impl_{};
+    std::unique_ptr<ICallable> impl_{};
 };
 
 std::vector<BinaryOp> ops;
@@ -538,6 +579,7 @@ private:
 
 - **Лямбда — функтор, сгенерированный компилятором.** Объект — замыкание, его класс — тип замыкания
 - **Каждая лямбда — отдельный тип.** Хранится только под `auto`
+- **Без захватов** — преобразуется в указатель на функцию: оператор преобразования
 - **Списки захвата:** по значению `[x]`, по ссылке `[&x]`, по умолчанию `[=]`/`[&]`. Захват по ссылке требует следить за временем жизни
 - **Захват с инициализацией** `[y = expr]` — для move и для произвольных выражений
 - **`[this]`** — захват объекта. `[*this]` (C++17) — копия
