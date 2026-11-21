@@ -21,7 +21,9 @@ class Agent : public IEventHandler {
  public:
     static constexpr std::size_t kWindowCapacity = 256;
 
-    explicit Agent(bool quiet);
+    Agent(bool quiet, uint64_t dedup_period_ms);
+
+    void Subscribe(AlertSink sink);
 
     void HandleEvent(const Event& event) override;
     void OnSkipped() override;
@@ -31,10 +33,15 @@ class Agent : public IEventHandler {
 
  private:
     void PrintContext() const;
+    void PrintContextOnce();
 
     RingBuffer<WindowEntry, kWindowCapacity> window_;
+    EntityModel model_;
     RuleEngine engine_;
     bool quiet_ = false;
+    bool context_printed_ = false;
+    uint64_t dedup_period_ms_ = 0;
+    std::size_t suppressed_ = 0;
     std::size_t event_count_ = 0;
     std::size_t skipped_event_count_ = 0;
     std::size_t broken_event_count_ = 0;

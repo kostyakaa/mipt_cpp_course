@@ -43,7 +43,7 @@ std::unique_ptr<nano_edr::ICondition> MakeTempPathCondition() {
 
 namespace nano_edr {
 
-RuleEngine BuildAgentRules() {
+RuleEngine BuildAgentRules(const EntityModel* model) {
     RuleEngine engine;
 
     auto script_host =
@@ -157,6 +157,36 @@ RuleEngine BuildAgentRules() {
     mass_write->AddAction("kill_process");
     mass_write->AddAction("quarantine_file");
     engine.AddRule(std::move(mass_write));
+
+    auto shell = MakeRule<SequenceRule>(
+        "shell_spawns_script_host", Severity::kHigh, 30000);
+    shell->SetFirst(MakeCondition(AllOfStatic(
+        EventTypeIs({EventType::kProcessStart}),
+        AnyOfStatic(FieldEndsWith("image", "cmd.exe"),
+                    FieldEndsWith("image", "powershell.exe"),
+                    FieldEndsWith("image", "pwsh.exe")))));
+    shell->SetSecond(MakeCondition(AllOfStatic(
+        EventTypeIs({EventType::kProcessStart}),
+        AnyOfStatic(FieldEndsWith("image", "wscript.exe"),
+                    FieldEndsWith("image", "cscript.exe")))));
+    shell->set_child_of_prev(true);
+    shell->SetModel(model);
+    shell->AddAction("kill_process");
+    engine.AddRule(std::move(shell));
+
+    auto dropped = MakeRule<LambdaRule>(
+        "spawned_from_dropped_file", Severity::kHigh,
+        [model](const Event& event) {
+            if (model == nullptr || event.event_type() != EventType::kProcessStart) {
+                return false;
+            }
+            const FileRecord* source = model->FindSpawnSource(event.pid());
+            return source != nullptr && !source->writer_pid.empty() &&
+                   source->writer_pid != event.pid();
+        });
+    dropped->AddAction("kill_process");
+    dropped->AddAction("quarantine_file");
+    engine.AddRule(std::move(dropped));
 
     return engine;
 }

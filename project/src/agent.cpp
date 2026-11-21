@@ -1,9 +1,10 @@
 #include "agent.h"
 
 #include <print>
-#include <vector>
+#include <utility>
 
 #include "agent_rules.h"
+#include "dedup_sink.h"
 #include "rules.h"
 
 namespace nano_edr {
@@ -27,21 +28,32 @@ void Agent::PrintContext() const {
     }
 }
 
-Agent::Agent(bool quiet)
-    : engine_(BuildAgentRules()),
-      quiet_(quiet) {}
+Agent::Agent(bool quiet, uint64_t dedup_period_ms)
+    : engine_(BuildAgentRules(&model_)),
+      quiet_(quiet),
+      dedup_period_ms_(dedup_period_ms) {
+    engine_.SetModel(&model_);
+}
+
+void Agent::Subscribe(AlertSink sink) {
+    FanOutSink all;
+    all.Add([this](const Detection&) { PrintContextOnce(); });
+    all.Add(std::move(sink));
+    engine_.Subscribe(DedupSink(std::move(all), dedup_period_ms_, &suppressed_));
+}
+
+void Agent::PrintContextOnce() {
+    if (quiet_ || context_printed_) {
+        return;
+    }
+    PrintContext();
+    context_printed_ = true;
+}
 
 void Agent::HandleEvent(const Event& event) {
-    std::vector<const IRule*> fired;
-    const std::size_t detections = engine_.ProcessEvent(event, &fired);
-    if (detections != 0 && !quiet_) {
-        PrintContext();
-    }
-    for (const IRule* rule : fired) {
-        std::print("[DETECT] {}  {}  ts={} pid={}\n",
-                   SeverityName(rule->severity()), rule->id(),
-                   event.raw_ts(), event.pid());
-    }
+    model_.Observe(event);
+    context_printed_ = false;
+    engine_.ProcessEvent(event, nullptr);
     window_.PushBack({event.ts(), event.type(), event.pid()});
     ++event_count_;
     ++events_by_type_[event.type()];
@@ -64,6 +76,12 @@ void Agent::PrintSummary() const {
     std::print("событий {}\n", event_count_);
     std::print("пропущенных строк {}\n", skipped_event_count_);
     std::print("битых событий {}\n", broken_event_count_);
+    std::print("[STAT] в модели процессов {}, файлов {}\n",
+               model_.process_count(), model_.file_count());
+    if (suppressed_ != 0) {
+        std::print("[STAT] подавлено дубликатов {} (срок {} мс)\n",
+                   suppressed_, dedup_period_ms_);
+    }
     std::print("[STAT] в окне {} из {} мест\n", window_.size(), window_.capacity());
     for (const auto& [type, count] : events_by_type_) {
         std::print("{}: {}\n", type, count);
