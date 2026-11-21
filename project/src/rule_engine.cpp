@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include "copy_stats.h"
+
 namespace nano_edr {
 
 void RuleEngine::Subscribe(AlertSink sink) {
@@ -10,6 +12,8 @@ void RuleEngine::Subscribe(AlertSink sink) {
 
 Detection RuleEngine::MakeDetection(const IRule& rule, const Event& event) const {
     Detection detection;
+    detection.evidence.push_back(std::make_unique<Event>(event));
+    ++copy_stats().evidence_copied;
     detection.rule = rule.id();
     detection.severity = rule.severity();
     detection.ts = event.ts();

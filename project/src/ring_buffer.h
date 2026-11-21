@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstddef>
+#include <utility>
 
 namespace nano_edr {
 
@@ -32,6 +33,15 @@ class RingBuffer {
 
     void PushBack(const T& value) {
         data_[(oldest_ + size_) % N] = value;
+        if (full()) {
+            oldest_ = (oldest_ + 1) % N;
+        } else {
+            ++size_;
+        }
+    }
+
+    void PushBack(T&& value) {
+        data_[(oldest_ + size_) % N] = std::move(value);
         if (full()) {
             oldest_ = (oldest_ + 1) % N;
         } else {

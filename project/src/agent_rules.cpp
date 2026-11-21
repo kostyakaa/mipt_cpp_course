@@ -53,6 +53,8 @@ RuleEngine BuildAgentRules(const EntityModel* model) {
     script_host->AddCondition(MakeScriptHostCondition());
     script_host->AddCondition(MakeTempPathCondition());
     script_host->AddAction("kill_process");
+    script_host->AddAction("quarantine_source");
+    script_host->AddAction("delete_dropped");
     engine.AddRule(std::move(script_host));
 
     auto lolbin =
@@ -116,7 +118,7 @@ RuleEngine BuildAgentRules(const EntityModel* model) {
     startup_paths->Add(std::make_unique<FieldContains>(
         "to", "/start menu/programs/startup/"));
     autostart->AddCondition(std::move(startup_paths));
-    autostart->AddAction("quarantine_file");
+    autostart->AddAction("delete_evidence");
     engine.AddRule(std::move(autostart));
 
     auto ransom =
@@ -129,7 +131,8 @@ RuleEngine BuildAgentRules(const EntityModel* model) {
         std::make_unique<FieldEndsWith>("path", ".locked"));
     locked_paths->Add(std::make_unique<FieldEndsWith>("to", ".locked"));
     ransom->AddCondition(std::move(locked_paths));
-    ransom->AddAction("quarantine_file");
+    ransom->AddAction("kill_process");
+    ransom->AddAction("quarantine_image");
     engine.AddRule(std::move(ransom));
 
     auto beacon = std::make_unique<SequenceRule>(
@@ -155,7 +158,7 @@ RuleEngine BuildAgentRules(const EntityModel* model) {
                     FieldContains("to", "\\Documents\\"),
                     FieldContains("to", "\\Desktop\\")))));
     mass_write->AddAction("kill_process");
-    mass_write->AddAction("quarantine_file");
+    mass_write->AddAction("quarantine_image");
     engine.AddRule(std::move(mass_write));
 
     auto shell = MakeRule<SequenceRule>(
@@ -185,7 +188,8 @@ RuleEngine BuildAgentRules(const EntityModel* model) {
                    source->writer_pid != event.pid();
         });
     dropped->AddAction("kill_process");
-    dropped->AddAction("quarantine_file");
+    dropped->AddAction("quarantine_source");
+    dropped->AddAction("delete_dropped");
     engine.AddRule(std::move(dropped));
 
     return engine;

@@ -3,6 +3,7 @@
 #include <exception>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "event.h"
 #include "parse.h"
@@ -29,7 +30,7 @@ void FileSource::Run(IEventHandler* handler) {
             continue;
         }
         try {
-            handler->HandleEvent(Event(parts));
+            handler->HandleEvent(Event(std::move(parts)));
         } catch (const std::exception&) {
             handler->OnBroken();
         }

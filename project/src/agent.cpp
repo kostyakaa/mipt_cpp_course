@@ -52,15 +52,31 @@ void Agent::PrintContextOnce() {
 
 void Agent::HandleEvent(const Event& event) {
     model_.Observe(event);
+    const bool own = responder_ != nullptr && responder_->Recognize(event);
     context_printed_ = false;
-    engine_.ProcessEvent(event, nullptr);
-    window_.PushBack({event.ts(), event.type(), event.pid()});
+    if (!own) {
+        engine_.ProcessEvent(event, nullptr);
+    }
+    WindowEntry entry;
+    entry.ts = event.ts();
+    entry.type = event.type();
+    entry.pid = event.pid();
+    window_.PushBack(std::move(entry));
     ++event_count_;
     ++events_by_type_[event.type()];
 }
 
 void Agent::OnSkipped() {
     ++skipped_event_count_;
+}
+
+void Agent::EnableResponse(OsHandle* os, bool dry_run,
+                           const std::string& quarantine_dir) {
+    planner_ = std::make_unique<ResponsePlanner>(&model_, quarantine_dir);
+    responder_ = std::make_unique<Responder>(os, dry_run);
+    engine_.Subscribe([this](const Detection& detection) {
+        responder_->Execute(planner_->Plan(detection));
+    });
 }
 
 void Agent::OnBroken() {
@@ -74,6 +90,16 @@ void Agent::PrintSummary() const {
         return;
     }
     std::print("событий {}\n", event_count_);
+    if (responder_ != nullptr) {
+        const ResponseStats& stats = responder_->stats();
+        std::print("[STAT] действий запланировано {}, повторов отброшено {}\n",
+                   stats.planned, stats.skipped_repeat);
+        std::print("[STAT] завершено процессов {}, изолировано файлов {}, удалено файлов {}\n",
+                   stats.killed, stats.quarantined, stats.deleted);
+        if (stats.own_events != 0) {
+            std::print("[STAT] своих событий {}\n", stats.own_events);
+        }
+    }
     std::print("пропущенных строк {}\n", skipped_event_count_);
     std::print("битых событий {}\n", broken_event_count_);
     std::print("[STAT] в модели процессов {}, файлов {}\n",

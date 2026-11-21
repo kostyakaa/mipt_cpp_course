@@ -23,7 +23,8 @@ void FileSink::operator()(const Detection& detection) {
 
 void CountingSink::operator()(const Detection& detection) const {
     ++counter_->total;
-    counter_->seen.push_back(detection);
+    counter_->seen.push_back(SeenAlert{detection.rule, detection.severity,
+                                       detection.ts, detection.pid, detection.actions});
 }
 
 void FanOutSink::Add(AlertSink sink) {
