@@ -91,7 +91,7 @@ const Action* FindTarget(const ResponsePlan& plan, const std::string& target) {
 // Поддерево процессов
 // ---------------------------------------------------------------------------
 
-TEST_CASE("в план убийства попадает всё поддерево") {
+TEST_CASE("в план завершения попадает всё поддерево") {
     EntityModel model;
     model.Observe(Start("1042", "880", "C:\\Windows\\System32\\cmd.exe",
                         "cmd /c wscript a.js", 1000));
@@ -111,7 +111,7 @@ TEST_CASE("в план убийства попадает всё поддерев
     CHECK(plan.Has("1156"));
 }
 
-TEST_CASE("потомки убиваются раньше родителя") {
+TEST_CASE("потомки завершаются раньше родителя") {
     EntityModel model;
     model.Observe(Start("1042", "880", "cmd.exe", "cmd", 1000));
     model.Observe(Start("1101", "1042", "wscript.exe", "wscript", 2000));
@@ -121,8 +121,8 @@ TEST_CASE("потомки убиваются раньше родителя") {
         planner.Plan(MakeDetection("test", "1042", {"kill_process"}));
 
     REQUIRE(plan.size() == 2);
-    // Живой родитель успеет породить нового потомка взамен убитого. На живой
-    // машине это не теория, а то, как устроены сторожевые процессы.
+    // Живой родитель успеет породить нового потомка взамен завершённого.
+    // На живой машине это не теория, а то, как устроены сторожевые процессы.
     CHECK(plan.actions()[0].pid == "1101");
     CHECK(plan.actions()[1].pid == "1042");
 }
@@ -137,7 +137,7 @@ TEST_CASE("время старта берётся из модели") {
 
     REQUIRE(plan.size() == 1);
     // Личность процесса — пара (номер, время старта). Без второй половины
-    // убийство однажды достанется тому, кому этот номер перешёл.
+    // завершение однажды достанется тому, кому этот номер перешёл.
     CHECK(plan.actions()[0].expected_start.ms == 1730000001000);
 }
 
@@ -240,13 +240,62 @@ TEST_CASE("без каталога карантина изоляции не бу
     CHECK(plan.empty());
 }
 
+TEST_CASE("системный источник запуска не изолируется") {
+    EntityModel model;
+    model.Observe(Start("1042", "880", "C:\\Windows\\System32\\cmd.exe",
+                        "cmd /c wscript", 1000));
+    model.Observe(Make("file_create", "1042", 1400,
+                       {Field{"path", "C:\\Program Files\\Tool\\a.js"}}));
+    model.Observe(Start("1101", "1042", "C:\\Windows\\System32\\wscript.exe",
+                        "wscript.exe C:\\Program Files\\Tool\\a.js", 2000));
+
+    ResponsePlanner planner(&model, "C:\\quarantine");
+    // Предохранитель один на все действия с файлами: источник запуска
+    // из системного каталога в карантин не уходит, как и системный образ.
+    const ResponsePlan plan =
+        planner.Plan(MakeDetection("test", "1101", {"quarantine_source"}));
+
+    CHECK(plan.empty());
+}
+
+TEST_CASE("без каталога карантина источник запуска не изолируется") {
+    EntityModel model;
+    model.Observe(Start("1042", "880", "C:\\Windows\\System32\\cmd.exe",
+                        "cmd /c wscript", 1000));
+    model.Observe(Make("file_create", "1042", 1400,
+                       {Field{"path", "C:\\Users\\max\\Temp\\a.js"}}));
+    model.Observe(Start("1101", "1042", "C:\\Windows\\System32\\wscript.exe",
+                        "wscript.exe C:\\Users\\max\\Temp\\a.js", 2000));
+
+    ResponsePlanner planner(&model, "");
+    const ResponsePlan plan =
+        planner.Plan(MakeDetection("test", "1101", {"quarantine_source"}));
+
+    // Действие с пустым `to` перенесло бы файл в никуда.
+    CHECK(plan.empty());
+}
+
+TEST_CASE("системный путь узнаётся без учёта регистра") {
+    EntityModel model;
+    model.Observe(Start("1156", "880",
+                        "c:\\WINDOWS\\system32\\powershell.exe",
+                        "powershell -w hidden -enc AAA", 1000));
+
+    ResponsePlanner planner(&model, "C:\\quarantine");
+    // Windows регистр в путях не различает, и журнал пишет их как придётся.
+    const ResponsePlan plan =
+        planner.Plan(MakeDetection("test", "1156", {"quarantine_image"}));
+
+    CHECK(plan.empty());
+}
+
 TEST_CASE("номер процесса входит в имя в карантине") {
     EntityModel model;
     ResponsePlanner planner(&model, "C:\\quarantine");
 
     // Перенос на существующий путь заменяет его, как rename. Два файла
     // с одинаковым именем из разных каталогов затёрли бы друг друга,
-    // и вторая улика исчезла бы молча.
+    // и второй файл исчез бы молча.
     CHECK(planner.QuarantinePath("C:\\a\\payload.exe", "10") ==
           "C:\\quarantine\\10-payload.exe");
     CHECK(planner.QuarantinePath("C:\\b\\payload.exe", "20") ==
@@ -307,6 +356,25 @@ TEST_CASE("удаляется принесённое всем поддерево
     CHECK(plan.Has("C:\\Temp\\stage2.bin"));
 }
 
+TEST_CASE("системный файл не удаляется") {
+    EntityModel model;
+    model.Observe(Start("1042", "880", "cmd.exe", "cmd", 1000));
+    model.Observe(Make("file_create", "1042", 1100,
+                       {Field{"path", "C:\\Windows\\Temp\\helper.dll"}}));
+    model.Observe(Make("file_create", "1042", 1200,
+                       {Field{"path", "C:\\Users\\max\\Temp\\a.js"}}));
+
+    ResponsePlanner planner(&model, "C:\\quarantine");
+    const ResponsePlan plan =
+        planner.Plan(MakeDetection("test", "1042", {"delete_dropped"}));
+
+    // Процесс создал оба файла, но удалять из системного каталога нельзя:
+    // правило могло ошибиться, а удалённое не вернуть.
+    REQUIRE(plan.size() == 1);
+    CHECK(plan.actions()[0].path == "C:\\Users\\max\\Temp\\a.js");
+    CHECK(!plan.Has("C:\\Windows\\Temp\\helper.dll"));
+}
+
 TEST_CASE("удаляется файл из самого детекта") {
     EntityModel model;
     model.Observe(Start("4410", "880", "powershell.exe", "powershell", 1000));
@@ -321,7 +389,7 @@ TEST_CASE("удаляется файл из самого детекта") {
     const ResponsePlan plan = planner.Plan(detection);
 
     // Ярлык в автозагрузке не назовёт ни модель, ни образ процесса:
-    // powershell, положивший его, сам по себе не улика. Назвать его может
+    // powershell, положивший его, сам по себе не вредоносен. Назвать его может
     // только то событие, на котором правило сработало.
     REQUIRE(plan.size() == 1);
     CHECK(plan.actions()[0].kind == ActionKind::kDeleteFile);
@@ -359,7 +427,7 @@ TEST_CASE("изоляция побеждает удаление на одном 
     ResponsePlanner planner(&model, "C:\\quarantine");
     // Файл-источник процесса 1101 создан процессом 1042, то есть попадает
     // и под изоляцию, и под удаление. Без дедупликации второе действие
-    // отменило бы первое, и улика была бы уничтожена.
+    // отменило бы первое, и изолированный файл был бы удалён.
     const ResponsePlan plan = planner.Plan(MakeDetection(
         "test", "1101", {"quarantine_source", "delete_dropped"}));
 
