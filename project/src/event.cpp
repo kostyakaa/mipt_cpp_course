@@ -3,6 +3,9 @@
 #include <charconv>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
+
+#include "copy_stats.h"
 
 namespace nano_edr {
 
@@ -31,25 +34,42 @@ EventType EventTypeFromString(const std::string& type) {
     return EventType::kOther;
 }
 
-Event::Event(const EventParts& parts)
-    : raw_ts_(parts.ts),
-      type_(parts.type),
-      event_type_(EventTypeFromString(parts.type)),
-      pid_(parts.pid),
-      fields_(parts.fields) {
-    if (raw_ts_.empty()) {
+Timestamp Event::Validate(const std::string& raw_ts, const std::string& type) {
+    if (raw_ts.empty()) {
         throw std::invalid_argument("пустое значение ts");
     }
-    if (type_.empty()) {
+    if (type.empty()) {
         throw std::invalid_argument("пустое значение type");
     }
 
-    const char* begin = raw_ts_.data();
-    const char* end = begin + raw_ts_.size();
-    const auto [position, error] = std::from_chars(begin, end, ts_.ms);
+    Timestamp ts;
+    const char* begin = raw_ts.data();
+    const char* end = begin + raw_ts.size();
+    const auto [position, error] = std::from_chars(begin, end, ts.ms);
     if (error != std::errc{} || position != end) {
-        throw std::invalid_argument("некорректное значение ts: " + raw_ts_);
+        throw std::invalid_argument("некорректное значение ts: " + raw_ts);
     }
+    return ts;
+}
+
+Event::Event(const EventParts& parts) {
+    ts_ = Validate(parts.ts, parts.type);
+    event_type_ = EventTypeFromString(parts.type);
+    raw_ts_ = parts.ts;
+    type_ = parts.type;
+    pid_ = parts.pid;
+    fields_ = parts.fields;
+    copy_stats().event_strings_copied += 3 + 2 * parts.fields.size();
+}
+
+Event::Event(EventParts&& parts) {
+    ts_ = Validate(parts.ts, parts.type);
+    event_type_ = EventTypeFromString(parts.type);
+    copy_stats().event_strings_moved += 3 + 2 * parts.fields.size();
+    raw_ts_ = std::move(parts.ts);
+    type_ = std::move(parts.type);
+    pid_ = std::move(parts.pid);
+    fields_ = std::move(parts.fields);
 }
 
 std::string ToString(const Event& event) {

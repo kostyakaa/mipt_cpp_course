@@ -6,16 +6,12 @@
 #include <string>
 
 #include "event_source.h"
+#include "response.h"
 #include "ring_buffer.h"
 #include "rule_engine.h"
+#include "window_entry.h"
 
 namespace nano_edr {
-
-struct WindowEntry {
-    Timestamp ts;
-    std::string type;
-    std::string pid;
-};
 
 class Agent : public IEventHandler {
  public:
@@ -24,6 +20,8 @@ class Agent : public IEventHandler {
     Agent(bool quiet, uint64_t dedup_period_ms);
 
     void Subscribe(AlertSink sink);
+    void EnableResponse(OsHandle* os, bool dry_run,
+                        const std::string& quarantine_dir);
 
     void HandleEvent(const Event& event) override;
     void OnSkipped() override;
@@ -38,6 +36,8 @@ class Agent : public IEventHandler {
     RingBuffer<WindowEntry, kWindowCapacity> window_;
     EntityModel model_;
     RuleEngine engine_;
+    std::unique_ptr<ResponsePlanner> planner_;
+    std::unique_ptr<Responder> responder_;
     bool quiet_ = false;
     bool context_printed_ = false;
     uint64_t dedup_period_ms_ = 0;
